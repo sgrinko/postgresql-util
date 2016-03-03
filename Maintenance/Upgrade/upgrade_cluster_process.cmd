@@ -48,12 +48,13 @@ rd /S /Q %PGDATA_NEW%\pg_xlog
 rd /S /Q %PGDATA_NEW%\pg_commit_ts
 del /Q %PGDATA_NEW%\*.*
 REM устанавливаем с нужной локалью
-initdb.exe -U postgres -D %PGDATA_NEW% -E %PGENCODING% --locale="%PGLOCALE%"
+"%PGBIN_NEW%\initdb.exe" -U postgres -D %PGDATA_NEW% -E %PGENCODING% --locale="%PGLOCALE%"
 if %ERRORLEVEL% == 0 goto prepare1
 echo ===========================================
 echo Init cluster postgresql 9.5 failed
 echo ===========================================
 goto endscript
+
 
 :prepare1
 REM копируем туда pg_hba.conf
@@ -93,7 +94,14 @@ goto endscript
 
 :check
 REM проверка перед обновлением...
-pg_upgrade.exe --old-datadir "%PGDATA_OLD%" --new-datadir "%PGDATA_NEW%" --old-bindir "%PGBIN_OLD%" --new-bindir "%PGBIN_NEW%" --old-port 5432 --new-port 5433 --verbose --username postgres --check
+echo ==========================================================================================
+echo =========                                                                   ==============
+echo =========                                                                   ==============
+echo =========                         UPGRADE CHECK                             ==============
+echo =========                                                                   ==============
+echo =========                                                                   ==============
+echo ==========================================================================================
+"%PGBIN_NEW%\pg_upgrade.exe" --old-datadir "%PGDATA_OLD%" --new-datadir "%PGDATA_NEW%" --old-bindir "%PGBIN_OLD%" --new-bindir "%PGBIN_NEW%" --old-port 5432 --new-port 5433 --verbose --username postgres --check
 if %ERRORLEVEL% == 0 goto upgrade_cluster
 echo ===========================================
 echo pg_upgrade check failed
@@ -105,11 +113,11 @@ REM сам процесс... ( --jobs 8 -> запуск на 8 ядрах)
 echo ==========================================================================================
 echo =========                                                                   ==============
 echo =========                                                                   ==============
-echo =========                         UPGRADE START                             ==============
+echo =========                        UPGRADE START!!!                           ==============
 echo =========                                                                   ==============
 echo =========                                                                   ==============
 echo ==========================================================================================
-pg_upgrade.exe --old-datadir "%PGDATA_OLD%" --new-datadir "%PGDATA_NEW%" --old-bindir "%PGBIN_OLD%" --new-bindir "%PGBIN_NEW%" --old-port 5432 --new-port 5433 --verbose --username postgres --link --retain --jobs %PGCORE%
+"%PGBIN_NEW%\pg_upgrade.exe" --old-datadir "%PGDATA_OLD%" --new-datadir "%PGDATA_NEW%" --old-bindir "%PGBIN_OLD%" --new-bindir "%PGBIN_NEW%" --old-port 5432 --new-port 5433 --verbose --username postgres --link --retain --jobs %PGCORE%
 if %ERRORLEVEL% == 0 goto start_9_5
 echo ===========================================
 echo pg_upgrade cluster failed
@@ -136,4 +144,4 @@ echo End process at %TIME%
 pause
 "%PGBIN_NEW%\vacuumdb.exe" -U postgres -p 5432 -j %PGCOREV% --all --analyze-in-stages
 :endscript
-
+pause

@@ -5,7 +5,7 @@ REM устанавливаем новую версию сервера на порт 5433 и новый DATA каталог D:/Post
 REM эта часть вручную...
 REM 
 SET PATH_CURRENT=%~dp0
-echo RUNAS /USER:postgres "%PATH_CURRENT%upgrade_cluster_process.cmd"
+RUNAS /USER:postgres "%PATH_CURRENT%upgrade_cluster_process.cmd"
 
 
 

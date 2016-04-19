@@ -1,4 +1,9 @@
 @echo off
+chcp 65001
+set PGCLIENTENCODING=UTF8
+REM текущий путь запуска cmd файла
+SET PATH_CURRENT=%~dp0
+CD "%PATH_CURRENT%"
 REM Запоминаем время старта обновления (для статистики)
 SET UPGSTART=%TIME%
 REM Пути к БД и бинарникам
@@ -28,25 +33,26 @@ goto endscript
 :initdb
 REM создаем кластер заново с нужными нам настройками
 REM Подготавливаем папку для восстановления архива. Удаляем всё
-rd /S /Q %PGDATA_NEW%\base
-rd /S /Q %PGDATA_NEW%\global
-rd /S /Q %PGDATA_NEW%\pg_clog
-rd /S /Q %PGDATA_NEW%\pg_dynshmem
-rd /S /Q %PGDATA_NEW%\pg_log
-rd /S /Q %PGDATA_NEW%\pg_logical
-rd /S /Q %PGDATA_NEW%\pg_multixact
-rd /S /Q %PGDATA_NEW%\pg_notify
-rd /S /Q %PGDATA_NEW%\pg_replslot
-rd /S /Q %PGDATA_NEW%\pg_serial
-rd /S /Q %PGDATA_NEW%\pg_snapshots
-rd /S /Q %PGDATA_NEW%\pg_stat
-rd /S /Q %PGDATA_NEW%\pg_stat_tmp
-rd /S /Q %PGDATA_NEW%\pg_subtrans
-rd /S /Q %PGDATA_NEW%\pg_tblspc
-rd /S /Q %PGDATA_NEW%\pg_twophase
-rd /S /Q %PGDATA_NEW%\pg_xlog
-rd /S /Q %PGDATA_NEW%\pg_commit_ts
-del /Q %PGDATA_NEW%\*.*
+copy /Y "%PGDATA_NEW%\postgresql.conf" "%PATH_CURRENT%\postgresql.conf"
+rd /S /Q "%PGDATA_NEW%\base"
+rd /S /Q "%PGDATA_NEW%\global"
+rd /S /Q "%PGDATA_NEW%\pg_clog"
+rd /S /Q "%PGDATA_NEW%\pg_dynshmem"
+rd /S /Q "%PGDATA_NEW%\pg_log"
+rd /S /Q "%PGDATA_NEW%\pg_logical"
+rd /S /Q "%PGDATA_NEW%\pg_multixact"
+rd /S /Q "%PGDATA_NEW%\pg_notify"
+rd /S /Q "%PGDATA_NEW%\pg_replslot"
+rd /S /Q "%PGDATA_NEW%\pg_serial"
+rd /S /Q "%PGDATA_NEW%\pg_snapshots"
+rd /S /Q "%PGDATA_NEW%\pg_stat"
+rd /S /Q "%PGDATA_NEW%\pg_stat_tmp"
+rd /S /Q "%PGDATA_NEW%\pg_subtrans"
+rd /S /Q "%PGDATA_NEW%\pg_tblspc"
+rd /S /Q "%PGDATA_NEW%\pg_twophase"
+rd /S /Q "%PGDATA_NEW%\pg_xlog"
+rd /S /Q "%PGDATA_NEW%\pg_commit_ts"
+del /Q "%PGDATA_NEW%\*.*"
 REM устанавливаем с нужной локалью
 "%PGBIN_NEW%\initdb.exe" -U postgres -D %PGDATA_NEW% -E %PGENCODING% --locale="%PGLOCALE%"
 if %ERRORLEVEL% == 0 goto prepare1
@@ -57,24 +63,40 @@ goto endscript
 
 
 :prepare1
+REM восстанавливаем исходный файл настроек с нужным портом
+copy /Y "%PATH_CURRENT%\postgresql.conf" "%PGDATA_NEW%\postgresql.conf" 
+if %ERRORLEVEL% == 0 goto prepare2
+echo ===========================================
+echo copy postgresql.conf failed
+echo ===========================================
+goto endscript
+
+:prepare2
 REM копируем туда pg_hba.conf
 copy /Y %PGDATA_OLD%\pg_hba.conf %PGDATA_NEW%\pg_hba.conf
-if %ERRORLEVEL% == 0 goto prepare2
+if %ERRORLEVEL% == 0 goto prepare3
 echo ===========================================
 echo copy pg_hba.conf failed
 echo ===========================================
 goto endscript
 
-:prepare2
+:prepare3
 REM копируем туда pg_ident.conf
 copy /Y %PGDATA_OLD%\pg_ident.conf %PGDATA_NEW%\pg_ident.conf
-if %ERRORLEVEL% == 0 goto prepare3
+if %ERRORLEVEL% == 0 goto prepare4
 echo ===========================================
 echo copy pg_ident.conf failed
 echo ===========================================
 goto endscript
 
-:prepare3
+:prepare4
+REM создаём файл чтения статистики по всем БД
+"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_old.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\o dump_stat_' || datname || E'.sql\n' || E'select dump_statistic();\n' from pg_database where datistemplate = false and datname <> 'postgres';"
+REM создаём файл вливания статистики на новый сервер...
+"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_new.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\i dump_stat_' || datname || E'.sql\n' from pg_database where datistemplate = false and datname <> 'postgres';"
+REM выполняем сформированный файл - upgrade_dump_stat_old.sql
+"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_old.sql"
+
 REM копируем туда новую версию postgresql.conf
 copy /Y %PGDATA_OLD%\postgresql_new.conf %PGDATA_NEW%\postgresql.conf
 if %ERRORLEVEL% == 0 goto stop_9_4
@@ -141,7 +163,11 @@ echo =========                                                                  
 echo ==========================================================================================
 echo Start process at %UPGSTART%
 echo End process at %TIME%
-pause
+REM заносим статистику на новый сервер - upgrade_dump_stat_new.sql
+"C:\Program Files\PostgreSQL_PP\9.5\bin\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_new.sql"
+REM заполняем кэш данных нужными объектами
+"C:\Program Files\PostgreSQL_PP\9.5\bin\psql.exe" -h localhost -U "postgres" -d sparkmes -c "select public.job_prewarm();"
+REM запускаем обновление статистики
 "%PGBIN_NEW%\vacuumdb.exe" -U postgres -p 5432 -j %PGCOREV% --all --analyze-in-stages
 :endscript
 pause

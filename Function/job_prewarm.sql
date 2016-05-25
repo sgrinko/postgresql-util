@@ -1,6 +1,9 @@
 CREATE OR REPLACE FUNCTION job_prewarm()
   RETURNS text AS
 $BODY$
+/*
+эта функция загружает нужные объекты в кэш
+*/
 DECLARE
     v_pages integer;
     v_relname varchar(64);
@@ -24,7 +27,7 @@ BEGIN
         v_out := v_out || 'in the object "' || v_relname || '" (current% ' || COALESCE(v_percent, 0.0) || ') loaded ' || v_pages || ' pages' || E'\n';
     END LOOP;
     --
-    perform pg_stat_statements_reset(); -- ���������� ���������� �� ���� ��������
+    perform pg_stat_statements_reset(); -- сбрасываем статистику по всем запросам
     --
     RETURN v_out;
 END

@@ -10,13 +10,13 @@ REM Пути к БД и бинарникам
 SET PGDATA_OLD=D:\PostgresData_9.4
 SET PGDATA_NEW=D:\PostgresData_9.5
 SET PGBIN_OLD=C:\Program Files\PostgreSQL\9.4\bin
-SET PGBIN_NEW=C:\Program Files\PostgreSQL_PP\9.5\bin
+SET PGBIN_NEW=C:\Program Files\PostgresPro\9.5\bin
 REM параметры для инициализации кластера БД
 SET PGLOCALE=English, United States
 SET PGENCODING=UTF8
 REM сколько процов использовать для обновления
 SET PGCORE=8
-REM сколько процов использовать для вакуума
+REM сколько процов использовать для сбора статистики
 SET PGCOREV=4
 D:
 SET PATH=%PATH%;%PGBIN_NEW%;
@@ -91,11 +91,11 @@ goto endscript
 
 :prepare4
 REM создаём файл чтения статистики по всем БД
-"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_old.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\o dump_stat_' || datname || E'.sql\n' || E'select dump_statistic();\n' from pg_database where datistemplate = false and datname <> 'postgres';"
+"%PGBIN_OLD%\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_old.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\o dump_stat_' || datname || E'.sql\n' || E'select dump_statistic();\n' from pg_database where datistemplate = false and datname <> 'postgres';"
 REM создаём файл вливания статистики на новый сервер...
-"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_new.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\i dump_stat_' || datname || E'.sql\n' from pg_database where datistemplate = false and datname <> 'postgres';"
+"%PGBIN_OLD%\psql.exe" -h localhost -U "postgres" -t -A -o upgrade_dump_stat_new.sql -c "select '\c ' || datname || E'\nCREATE EXTENSION IF NOT EXISTS dump_stat;\n\\i dump_stat_' || datname || E'.sql\n' from pg_database where datistemplate = false and datname <> 'postgres';"
 REM выполняем сформированный файл - upgrade_dump_stat_old.sql
-"C:\Program Files\PostgreSQL\9.4\bin\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_old.sql"
+"%PGBIN_OLD%\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_old.sql"
 
 REM копируем туда новую версию postgresql.conf
 copy /Y %PGDATA_OLD%\postgresql_new.conf %PGDATA_NEW%\postgresql.conf
@@ -161,12 +161,20 @@ echo =========                                                                  
 echo =========                         UPGRADE END                               ==============
 echo =========                                                                   ==============
 echo ==========================================================================================
+REM заносим статистику на новый сервер - upgrade_dump_stat_new.sql
+"%PGBIN_NEW%\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_new.sql"
+echo ==========================================================================================
+echo =========                                                                   ==============
 echo Start process at %UPGSTART%
 echo End process at %TIME%
-REM заносим статистику на новый сервер - upgrade_dump_stat_new.sql
-"C:\Program Files\PostgreSQL_PP\9.5\bin\psql.exe" -h localhost -U "postgres" -t -A -f "upgrade_dump_stat_new.sql"
+echo =========                                                                   ==============
+echo ==========================================================================================
+echo ==========================================================================================
+echo =========                      job_prewarm                                  ==============
 REM заполняем кэш данных нужными объектами
-"C:\Program Files\PostgreSQL_PP\9.5\bin\psql.exe" -h localhost -U "postgres" -d sparkmes -c "select public.job_prewarm();"
+"%PGBIN_NEW%\psql.exe" -h localhost -U "postgres" -d sparkmes -c "select public.job_prewarm();"
+echo =========                                                                   ==============
+echo ==========================================================================================
 REM запускаем обновление статистики
 "%PGBIN_NEW%\vacuumdb.exe" -U postgres -p 5432 -j %PGCOREV% --all --analyze-in-stages
 :endscript

@@ -1,0 +1,8 @@
+@echo off
+SET PATH_CURRENT=%~dp0
+SET PGUSERSTART=%1
+IF "%1" EQU "" SET PGUSERSTART=postgres
+RUNAS /USER:%PGUSERSTART% "%PATH_CURRENT%pgpro_upgrade.cmd"
+
+
+
